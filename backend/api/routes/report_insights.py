@@ -1,12 +1,16 @@
 """
 Report Insights API Routes
 
-Endpoints for comprehensive, in-depth data analysis.
+DEPRECATED: Use /quick-insights/{session_id}?include_advanced=true instead.
+
+These endpoints will remain for backwards compatibility but redirect
+to the unified quick-insights API.
 """
 
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import RedirectResponse
 
 from api.schemas.requests import KeyInfluencersRequest, DecompositionRequest
 from api.schemas.responses import ReportInsightsResponse
@@ -18,17 +22,26 @@ from insights.report_generator import report_insights_generator
 router = APIRouter()
 
 
-@router.get("/report-insights/{session_id}", response_model=ReportInsightsResponse)
-async def get_report_insights(
-    session_id: str,
-    target_column: Optional[str] = Query(default=None, description="Target column for key influencers"),
-    measure_column: Optional[str] = Query(default=None, description="Measure column for decomposition"),
-) -> ReportInsightsResponse:
+@router.get(
+    "/report-insights/{session_id}",
+    response_model=ReportInsightsResponse,
+    deprecated=True,
+    description="DEPRECATED: Use /quick-insights/{session_id}?include_advanced=true instead"
+)
+async def get_report_insights(session_id: str) -> ReportInsightsResponse:
     """
+    DEPRECATED: Use /quick-insights/{session_id}?include_advanced=true instead.
+    
     Generate comprehensive report insights.
     
-    In-depth analysis including data profile, all insights,
-    correlations, key influencers, and decomposition tree.
+    Auto-detects all columns and generates in-depth analysis including:
+    - Data profile
+    - All Power BI style insights
+    - Correlations
+    - Key influencers (auto-selects target)
+    - Decomposition (auto-selects measure)
+    
+    No parameters required - everything is auto-detected.
     """
     session = session_store.get(session_id)
     if session is None:
@@ -36,6 +49,14 @@ async def get_report_insights(
     
     try:
         df = csv_parser.load_dataframe(session_id)
+        
+        # Auto-detect target and measure columns using data understanding
+        from core.data_understanding import data_understanding_engine
+        understanding = data_understanding_engine.understand(df)
+        
+        # Use first measure as target, if available
+        target_column = understanding.measure_columns[0].name if understanding.measure_columns else None
+        measure_column = understanding.measure_columns[0].name if understanding.measure_columns else None
         
         response = await report_insights_generator.generate(
             df=df,

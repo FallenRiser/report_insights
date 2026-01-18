@@ -141,6 +141,13 @@ class SessionStore:
                 del self._sessions[sid]
             
             return active
+    
+    def clear_all(self) -> int:
+        """Clear all sessions. Returns count of cleared sessions."""
+        with self._lock:
+            count = len(self._sessions)
+            self._sessions.clear()
+            return count
 
 
 def cached(cache: TTLCache):

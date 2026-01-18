@@ -8,7 +8,31 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+import numpy as np
+from pydantic import BaseModel, Field, field_serializer, model_serializer
+
+
+def convert_numpy(obj: Any) -> Any:
+    """Convert numpy types to Python native types."""
+    if obj is None:
+        return None
+    # Handle numpy boolean types (np.bool_ is the main one, np.bool8 was removed)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, dict):
+        return {k: convert_numpy(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [convert_numpy(v) for v in obj]
+    # Handle generic numpy dtypes
+    if hasattr(obj, 'item'):
+        return obj.item()
+    return obj
 
 
 class InsightType(str, Enum):
@@ -94,6 +118,12 @@ class Insight(BaseModel):
     # Visualization hint
     chart_type: Optional[str] = None
     chart_data: Optional[dict[str, Any]] = None
+    
+    @field_serializer('metrics', 'chart_data')
+    @classmethod
+    def serialize_numpy_fields(cls, v: Any) -> Any:
+        """Convert numpy types to Python native types."""
+        return convert_numpy(v)
 
 
 class TrendInsight(Insight):
@@ -165,28 +195,105 @@ class DecompositionResult(BaseModel):
     suggested_splits: list[str] = []
 
 
+class PowerBIInsightModel(BaseModel):
+    """Power BI style insight - concise, actionable, with chart data."""
+    
+    insight_type: str = Field(
+        ..., 
+        description="Type: high_value, majority, low_variance, trend, outlier, correlation, change_point, seasonality, steady_share, time_series_outlier"
+    )
+    measure: str = Field(..., description="The measure being analyzed")
+    dimension: Optional[str] = Field(None, description="The dimension for grouping")
+    statement: str = Field(..., description="One-sentence insight")
+    chart_type: str = Field(..., description="Chart type: bar, line, scatter, pie")
+    chart_data: dict[str, Any] = Field(default={}, description="Data for rendering the chart")
+    score: float = Field(default=0.5, ge=0, le=1)
+    
+    @field_serializer('chart_data')
+    @classmethod
+    def serialize_chart_data(cls, v: Any) -> Any:
+        return convert_numpy(v)
+
+
+class DatasetSummary(BaseModel):
+    """Brief summary of the dataset."""
+    
+    row_count: int
+    column_count: int
+    dataset_type: str  # e.g., "hierarchical", "time_series", "transactional"
+    primary_grouper: Optional[str] = None
+    measures: list[str] = []
+    dimensions: list[str] = []
+    
+    # Semantic understanding - What is this data about?
+    business_domain: str = "general"  # e.g., "sales", "finance", "hr"
+    data_story: str = ""  # One-sentence description of the data
+    key_questions: list[str] = []  # Business questions this data can answer
+
+
+class StoryColumnModel(BaseModel):
+    """Column important for storytelling."""
+    
+    name: str
+    role: str  # "primary_measure", "secondary_measure", "key_dimension", "time_axis"
+    business_meaning: str
+    importance: float
+
+
 class QuickInsightsResponse(BaseModel):
-    """Quick insights response."""
+    """
+    Clean quick insights response.
+    
+    First understands the data, then returns Power BI style insights.
+    """
     
     session_id: str
     generated_at: datetime
     processing_time_ms: float
-    insights: list[Insight]
-    summary: str
+    
+    # STEP 1: Data Understanding - What is this data about?
+    data_summary: DatasetSummary
+    story_columns: list[StoryColumnModel] = []  # Most important columns for the story
+    
+    # STEP 2: The main output - Power BI style insights based on understanding
+    insights: list[PowerBIInsightModel] = []
+    
+    # Actionable recommendations
+    recommendations: list[str] = []
+    
+    # Optional narrative summary (LLM-generated if available)
+    narrative: Optional[str] = None
+    
+    # ADVANCED ANALYSIS (formerly from report_insights - now unified)
+    # These use dict to accept flexible output from various analyzers
+    profile: Optional[DataProfile] = None  # Detailed data profile
+    correlations: list[dict] = []  # All significant correlations
+    key_influencers: Optional[dict] = None  # What influences the primary measure
+    decomposition: Optional[dict] = None  # Breakdown of primary measure
 
 
 class ReportInsightsResponse(BaseModel):
-    """Full report insights response."""
+    """
+    Detailed report insights - auto-detects columns, no user input needed.
+    """
     
     session_id: str
     generated_at: datetime
     processing_time_ms: float
+    
+    # Data profile
     profile: DataProfile
-    insights: list[Insight]
-    correlations: list[CorrelationInsight]
+    
+    # All insights found
+    insights: list[PowerBIInsightModel] = []
+    
+    # Detailed analysis results (optional)
+    correlations: list[CorrelationInsight] = []
     key_influencers: Optional[KeyInfluencersResult] = None
     decomposition: Optional[DecompositionResult] = None
-    narrative: str
+    
+    # LLM-generated narrative
+    narrative: str = ""
 
 
 class SessionInfo(BaseModel):

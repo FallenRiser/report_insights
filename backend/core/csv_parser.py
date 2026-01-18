@@ -77,6 +77,9 @@ class CSVParser:
             truncate_ragged_lines=True,
         )
         
+        # Post-process to parse date strings that weren't auto-detected
+        df = self._parse_date_strings(df)
+        
         return df
     
     def parse_bytes(
@@ -113,6 +116,56 @@ class CSVParser:
             ignore_errors=True,
             truncate_ragged_lines=True,
         )
+        
+        # Post-process to parse date strings that weren't auto-detected
+        df = self._parse_date_strings(df)
+        
+        return df
+    
+    def _parse_date_strings(self, df: pl.DataFrame) -> pl.DataFrame:
+        """
+        Convert string columns that look like dates to proper datetime.
+        
+        This handles common date formats that Polars doesn't auto-detect.
+        """
+        # Common date patterns in column names
+        date_patterns = ["date", "time", "datetime", "timestamp", "created", "updated"]
+        
+        # Common date formats to try
+        date_formats = [
+            "%m/%d/%Y",       # 01/15/2024
+            "%d/%m/%Y",       # 15/01/2024
+            "%Y-%m-%d",       # 2024-01-15
+            "%Y/%m/%d",       # 2024/01/15
+            "%m-%d-%Y",       # 01-15-2024
+            "%d-%m-%Y",       # 15-01-2024
+            "%B %d, %Y",      # January 15, 2024
+            "%b %d, %Y",      # Jan 15, 2024
+            "%d %B %Y",       # 15 January 2024
+            "%d %b %Y",       # 15 Jan 2024
+        ]
+        
+        for col in df.columns:
+            col_lower = col.lower()
+            dtype = df[col].dtype
+            
+            # Only process string columns with date-like names
+            if dtype not in (pl.Utf8, pl.String):
+                continue
+                
+            if not any(pattern in col_lower for pattern in date_patterns):
+                continue
+            
+            # Try each date format
+            for fmt in date_formats:
+                try:
+                    parsed = df[col].str.to_datetime(fmt, strict=False)
+                    # Check if parsing succeeded (non-null values)
+                    if parsed.null_count() < len(df) * 0.5:
+                        df = df.with_columns(parsed.alias(col))
+                        break
+                except Exception:
+                    continue
         
         return df
     

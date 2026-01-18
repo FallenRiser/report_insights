@@ -17,11 +17,11 @@ class OllamaSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="OLLAMA_")
     
     base_url: str = Field(
-        default="http://localhost:11434",
+        default="http://192.168.29.179:9000",
         description="Ollama API base URL"
     )
     model: str = Field(
-        default="llama3.2",
+        default="llama3.2:latest",
         description="Default model for analysis"
     )
     timeout: float = Field(

@@ -55,7 +55,8 @@ class ContextBuilder:
                 stats = f"mean={col_profile.mean:.2f}, std={col_profile.std:.2f}"
             elif col_profile.top_values:
                 top = col_profile.top_values[0]
-                stats = f"top='{top['value']}' ({top['percentage']:.0f}%)"
+                pct = top.get('percentage', 0)
+                stats = f"top='{top.get('value', '')}' ({pct:.0f}%)"
             else:
                 stats = ""
             

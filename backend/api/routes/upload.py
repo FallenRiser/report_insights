@@ -158,3 +158,48 @@ async def get_profile(session_id: str) -> DataProfile:
         raise HTTPException(status_code=404, detail="Session data not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/clear-cache")
+async def clear_cache() -> dict:
+    """
+    Clear all cached data and sessions.
+    
+    Use this if you see stale data or want to force fresh analysis.
+    """
+    from core.cache import analysis_cache, session_store
+    from pathlib import Path
+    
+    # Clear analysis cache
+    analysis_cache.clear()
+    
+    # Clear all sessions
+    sessions_cleared = session_store.clear_all()
+    
+    # Also clear parquet files
+    settings = get_settings()
+    upload_dir = Path(settings.upload_dir)
+    files_deleted = 0
+    
+    if upload_dir.exists():
+        for file in upload_dir.glob("*.parquet"):
+            try:
+                file.unlink()
+                files_deleted += 1
+            except Exception:
+                pass
+    
+    return {
+        "message": "Cache cleared successfully",
+        "sessions_cleared": sessions_cleared,
+        "files_deleted": files_deleted,
+        "analysis_cache": "cleared",
+    }
+
+
+@router.delete("/clear-all")
+async def clear_all_data() -> dict:
+    """
+    Alias for /clear-cache. Clear all cached data, sessions, and files.
+    """
+    return await clear_cache()

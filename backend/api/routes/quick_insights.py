@@ -2,6 +2,7 @@
 Quick Insights API Routes
 
 Endpoints for fast, automatic data insights.
+Unified API - includes both quick and advanced (report) insights.
 """
 
 from typing import Optional
@@ -20,13 +21,20 @@ router = APIRouter()
 @router.get("/quick-insights/{session_id}", response_model=QuickInsightsResponse)
 async def get_quick_insights(
     session_id: str,
-    top_n: int = Query(default=10, ge=1, le=50, description="Number of top insights"),
+    top_n: int = Query(default=20, ge=1, le=50, description="Number of top insights"),
+    include_advanced: bool = Query(default=False, description="Include advanced analysis (profile, correlations, key_influencers, decomposition)"),
 ) -> QuickInsightsResponse:
     """
     Generate quick insights for the dataset.
     
     Fast automatic analysis similar to Power BI Quick Insights.
     Returns trends, outliers, correlations, and patterns.
+    
+    Set include_advanced=true to also get:
+    - Full data profile
+    - All significant correlations
+    - Key influencers analysis
+    - Decomposition tree
     """
     session = session_store.get(session_id)
     if session is None:
@@ -39,6 +47,7 @@ async def get_quick_insights(
             df=df,
             session_id=session_id,
             top_n=top_n,
+            include_advanced=include_advanced,
         )
         
         return response
